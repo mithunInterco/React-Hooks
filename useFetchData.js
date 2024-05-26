@@ -1,8 +1,3 @@
-/* **************************Global Hooks***********************************
-Use Data Fetch Hook(This is the main hook for fetch API data) 
-(NOTE: if change anything here then it will be affected everywhere)
-***************************************************************************/
-
 import { useState, useEffect, useCallback, useRef } from "react";
 
 const useFetchData = (url) => {
@@ -12,7 +7,7 @@ const useFetchData = (url) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const token = useRef(sessionStorage.getItem("userAccessToken"));
+  const token = useRef(sessionStorage.getItem("yourAccessToken"));
 
   const fetchData = useCallback(async () => {
     setLoading(true);

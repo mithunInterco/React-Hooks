@@ -1,10 +1,5 @@
 import { useState } from "react";
 
-/* **************************Global Hooks***********************************
-Here is useReloadData hooks only for performing on table data Updating
-(NOTE: if you change anything here then it will be affected everywhere)
-***************************************************************************/
-
 const useReloadData = () => {
   const handleItemAdded = (newItem, prev) => {
     // Find the index of the item to be edited

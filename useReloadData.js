@@ -1,21 +1,18 @@
-import { useState } from "react";
+//useReloadData hook only for table data updating after addition, edit, deletion
 
 const useReloadData = () => {
   const handleItemAdded = (newItem, prev) => {
-    // Find the index of the item to be edited
-    const index = prev.findIndex((item) => item.id === newItem.id);
-    if (index !== -1) {
-      // Replace the item at the found index with the edited item
-      const updatedData = [
-        ...prev.slice(0, index),
-        newItem,
-        ...prev.slice(index + 1),
-      ];
+    // Find the index of the existing item
+    const existingItemIndex = prev.findIndex((item) => item.id === newItem.id);
 
-      return updatedData;
+    if (existingItemIndex !== -1) {
+      // If the item exists, update it in place without changing the order
+      return prev.map((item, index) =>
+        index === existingItemIndex ? newItem : item
+      );
     } else {
-      // If the item is not found, just return the previous data
-      return prev;
+      // If the item doesn't exist, append it to the data
+      return [...prev, newItem];
     }
   };
 
@@ -24,8 +21,7 @@ const useReloadData = () => {
 
 export default useReloadData;
 
-//UseCase
-
+/*UseCase********************************/
 //  const handleItemAdded = useReloadData();
 
 //  const handleEditItem = (Item) => {

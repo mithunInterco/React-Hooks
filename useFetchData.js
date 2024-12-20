@@ -1,75 +1,121 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import useSortData from "./useSortData";
+import {
+  dbPromise,
+  getDBInstance,
+  saveToIndexedDB,
+} from "../Utils/IndexDbUtils";
 
-const useFetchData = (url, sortField, sortName, compareField) => {
+const useFetchData = (
+  baseUrl,
+  sortField,
+  sortName,
+  compareField,
+  activeTab
+) => {
   const [apiData, setApiData] = useState([]);
   const [reloadData, setReloadData] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [dbInitialized, setDbInitialized] = useState(false);
+  const [loadingCache, setLoadingCache] = useState(true);
 
-  const fetchData = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    const controller = new AbortController();
-    const signal = controller.signal;
+  getDBInstance();
 
+  // Initialize sort function with memoization
+  const sortData = useSortData(sortField, sortName, compareField);
+
+  // Memoized sorted data
+  const sortedApiData = useMemo(() => sortData(apiData), [apiData, sortData]);
+
+  // Function to update IndexedDB with new data for each activeTab
+  const updateCache = useCallback(
+    async (patchData) => {
+      await saveToIndexedDB("ManagementStore", baseUrl, patchData);
+    },
+    [baseUrl]
+  );
+
+  /*******************************************************
+   * Function to fetch data from API and update IndexedDB
+   * *****************************************************/
+  const fetchDataFromAPI = useCallback(async () => {
     try {
-      const requestOptions = {
+      const response = await fetch(baseUrl, {
         method: "GET",
         headers: { "Content-Type": "application/json" },
-        signal,
-      };
-      const response = await fetch(url, requestOptions);
+      });
       if (!response.ok) throw new Error("Network response was not ok");
 
-      let result = await response.json();
+      const result = await response.json();
       if (!result) return;
 
-      // Sort the data with items having status(sortName) "Ready"(compareField) at the top
-      const sortedData = Array.from(result)
-        .map((item, index) => ({
-          ...item,
-          originalIndex: index, // Store original index
-        }))
-        .sort((a, b) => {
-          // If `a` or `b` has status "Ready", prioritize it
-          if (a[sortName] === compareField && b[sortName] !== compareField)
-            return -1;
-          if (a[sortName] !== compareField && b[sortName] === compareField)
-            return 1;
-
-          // Otherwise, sort based on the `sortField`
-          if (a[sortField] < b[sortField]) return -1;
-          if (a[sortField] > b[sortField]) return 1;
-
-          // If values are equal, keep the original order
-          return a.originalIndex - b.originalIndex;
-        });
-
+      const sortedData = sortData(result);
       setApiData(sortedData);
+      await updateCache(sortedData);
+
+      // Set a timestamp in sessionStorage to track the last API fetch
+      sessionStorage.setItem(`L_A_F`, Date.now().toString());
     } catch (error) {
-      if (error.name !== "AbortError") {
-        setError(error.message);
-        console.error(error.message);
-      }
-    } finally {
-      setLoading(false);
+      console.error("Failed to fetch data from API:", error.message);
+      setError(error.message);
     }
+  }, [sortData, updateCache, activeTab, baseUrl]);
 
-    return () => controller.abort();
-  }, [url, reloadData, sortName, compareField, sortField]);
+  /**************************************************
+   * Function to fetch data from IndexedDB initially
+   * ************************************************/
+  const loadDataFromCache = useCallback(async () => {
+    setLoadingCache(true);
+    try {
+      const db = await dbPromise;
+      const cachedData = await db.get("ManagementStore", baseUrl);
 
+      if (cachedData) {
+        setApiData(sortData(cachedData));
+      } else {
+        await fetchDataFromAPI();
+      }
+    } catch (err) {
+      console.error("Error loading data from cache:", err);
+    } finally {
+      setLoadingCache(false);
+      setDbInitialized(true);
+    }
+  }, [baseUrl, sortData, fetchDataFromAPI]);
+
+  /*Load initial data from cache or API on mount or when activeTab changes****/
   useEffect(() => {
-    fetchData();
-  }, [fetchData, reloadData]);
+    loadDataFromCache();
+  }, [loadDataFromCache]);
+
+  /**************************************************
+   * Trigger API fetch if data is stale or on refresh
+   * ************************************************/
+  useEffect(() => {
+    const lastFetchTime = sessionStorage.getItem(`L_A_F`);
+    const isDataStale =
+      !lastFetchTime || Date.now() - parseInt(lastFetchTime, 10) > 3600000;
+
+    if (dbInitialized && isDataStale) {
+      fetchDataFromAPI();
+    }
+  }, [dbInitialized, fetchDataFromAPI, activeTab]);
+
+  // Refresh data from API whenever reloadData is triggered
+  useEffect(() => {
+    if (dbInitialized && reloadData) {
+      fetchDataFromAPI();
+      setReloadData(false);
+    }
+  }, [fetchDataFromAPI, reloadData, dbInitialized]);
 
   return {
-    apiData,
+    apiData: sortedApiData,
     setApiData,
     reloadData,
     setReloadData,
-    loading,
     error,
-    setLoading,
+    loadingCache,
   };
 };
 
